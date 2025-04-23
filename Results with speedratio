@@ -1,0 +1,13 @@
+| sensor             |   cpp_time_ns |   cpp_mem_kb |   rust_time_ns |   rust_mem_kb |   time_diff_ns | faster_time   |   mem_diff_kb | faster_memory   | speedup_desc           |
+|:-------------------|--------------:|-------------:|---------------:|--------------:|---------------:|:--------------|--------------:|:----------------|:-----------------------|
+| usb_cache_read     |    6113600956 |            0 |     5847759882 |             0 |      265841074 | Rust          |             0 | Rust            | Rust faster by 1.05×   |
+| usb_cache_write    |    6093904883 |            0 |     5862112743 |             0 |      231792140 | Rust          |             0 | Rust            | Rust faster by 1.04×   |
+| led_set            |        173147 |            0 |        4334345 |             0 |       -4161198 | C++           |             0 | Rust            | C++ faster by 25.03×   |
+| servo_set_angle    |        200881 |            0 |        3796232 |             0 |       -3595351 | C++           |             0 | Rust            | C++ faster by 18.90×   |
+| rf_transmit        |       1674937 |            0 |        2108750 |             0 |        -433813 | C++           |             0 | Rust            | C++ faster by 1.26×    |
+| button_read        |        229099 |            0 |            469 |             0 |         228630 | Rust          |             0 | Rust            | Rust faster by 488.48× |
+| pot_read           |        226346 |            0 |            465 |             0 |         225881 | Rust          |             0 | Rust            | Rust faster by 486.77× |
+| rf_receive         |       1586547 |            0 |        1415928 |             0 |         170619 | Rust          |             0 | Rust            | Rust faster by 1.12×   |
+| wifi_scan          |        330021 |            0 |         476257 |             0 |        -146236 | C++           |             0 | Rust            | C++ faster by 1.44×    |
+| volatile_usb_read  |         43415 |            0 |            464 |             0 |          42951 | Rust          |             0 | Rust            | Rust faster by 93.57×  |
+| volatile_usb_write |         43372 |            0 |            483 |             0 |          42889 | Rust          |             0 | Rust            | Rust faster by 89.80×  |
