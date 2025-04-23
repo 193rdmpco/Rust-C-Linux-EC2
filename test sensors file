@@ -1,0 +1,63 @@
+#include "sensors.hpp"
+#include <gtest/gtest.h>
+
+// Servo test
+TEST(ServoTest, AngleSetRead) {
+    int last_pwm = -1;
+    Servo s([&](int deg){ last_pwm = deg; });
+    s.init();
+    s.set_angle(90);
+    EXPECT_EQ(s.angle(), 90);
+    EXPECT_EQ(last_pwm, 90);
+}
+
+// LED test
+TEST(LEDTest, OnOff) {
+    bool gpio = false;
+    LED led([&](bool on){ gpio = on; });
+    led.init();
+    led.set(true);
+    EXPECT_TRUE(led.state());
+    EXPECT_TRUE(gpio);
+}
+
+// USB Cache test
+TEST(USBCacheTest, ReadWrite) {
+    USBCache cache(1);  // 1 KB
+    std::vector<uint8_t> data = {1,2,3,4};
+    cache.write(10, data);
+    auto out = cache.read(10, 4);
+    EXPECT_EQ(out, data);
+}
+
+// RFModule test
+TEST(RFTest, Loopback) {
+    RFModule rf;
+    rf.init();
+    std::vector<uint8_t> pkt = {0xDE,0xAD,0xBE,0xEF};
+    rf.transmit(pkt);
+    EXPECT_EQ(rf.receive(), pkt);
+}
+
+// WiFiScanner test
+TEST(WiFiTest, ScanList) {
+    WiFiScanner w;
+    auto list = w.scan();
+    EXPECT_FALSE(list.empty());
+}
+
+// Button & Pot test
+TEST(ButtonPotTest, DigitalAnalog) {
+    Button btn([](){ return true; });
+    btn.read();
+    EXPECT_TRUE(btn.pressed());
+
+    Pot pot([](){ return 512; });
+    pot.read();
+    EXPECT_EQ(pot.value(), 512);
+}
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}
