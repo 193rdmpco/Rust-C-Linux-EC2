@@ -1,0 +1,98 @@
+#pragma once
+#include <cstdint>
+#include <vector>
+#include <functional>
+
+// Abstract base “Sensor”
+class Sensor {
+public:
+    virtual ~Sensor() = default;
+    virtual void init() = 0;
+    virtual void read() = 0;
+};
+
+// Servo (angle in degrees)
+class Servo : public Sensor {
+public:
+    Servo(std::function<void(int)> pwm_out);
+    void init() override;
+    void set_angle(int deg);
+    void read() override;
+    int angle() const;
+private:
+    int _angle;
+    std::function<void(int)> _pwm;
+};
+
+// LED (on/off)
+class LED : public Sensor {
+public:
+    LED(std::function<void(bool)> gpio_out);
+    void init() override;
+    void set(bool on);
+    void read() override;
+    bool state() const;
+private:
+    bool _on;
+    std::function<void(bool)> _gpio;
+};
+
+// USB cache simulator (read/write latency)
+class USBCache {
+public:
+    USBCache(size_t size_kb);
+    void write(uint32_t addr, const std::vector<uint8_t>& data);
+    std::vector<uint8_t> read(uint32_t addr, size_t len);
+private:
+    std::vector<uint8_t> _mem;
+};
+
+// Volatile pointer simulator
+class VolatileUSB {
+public:
+    VolatileUSB(USBCache& cache);
+    void write_volatile(uint32_t addr, uint8_t value);
+    uint8_t read_volatile(uint32_t addr);
+private:
+    volatile uint8_t* _ptr;
+};
+
+// RF module (simple packet TX/RX)
+class RFModule {
+public:
+    void init() {}
+    void transmit(const std::vector<uint8_t>& pkt);
+    std::vector<uint8_t> receive();
+private:
+    std::vector<uint8_t> _last_pkt;
+};
+
+// WiFi scanner (returns SSID list)
+class WiFiScanner {
+public:
+    std::vector<std::string> scan();
+};
+
+// Button (digital input)
+class Button : public Sensor {
+public:
+    Button(std::function<bool()> read_gpio);
+    void init() override {}
+    void read() override;
+    bool pressed() const;
+private:
+    bool _pressed;
+    std::function<bool()> _gpio;
+};
+
+// Potentiometer (analog input 0–1023)
+class Pot : public Sensor {
+public:
+    Pot(std::function<int()> read_adc);
+    void init() override {}
+    void read() override;
+    int value() const;
+private:
+    int _val;
+    std::function<int()> _adc;
+};
