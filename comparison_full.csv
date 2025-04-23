@@ -1,0 +1,12 @@
+sensor,cpp_time_ns,cpp_mem_kb,rust_time_ns,rust_mem_kb,time_diff_ns,faster_time,mem_diff_kb,faster_memory,speedup
+usb_cache_read,6113600956,0,5847759882,0,265841074,Rust,0,Rust,1.04546
+usb_cache_write,6093904883,0,5862112743,0,231792140,Rust,0,Rust,1.03954
+led_set,173147,0,4334345,0,-4161198,C++,0,Rust,0.0399477
+servo_set_angle,200881,0,3796232,0,-3595351,C++,0,Rust,0.0529159
+rf_transmit,1674937,0,2108750,0,-433813,C++,0,Rust,0.79428
+button_read,229099,0,469,0,228630,Rust,0,Rust,488.484
+pot_read,226346,0,465,0,225881,Rust,0,Rust,486.766
+rf_receive,1586547,0,1415928,0,170619,Rust,0,Rust,1.1205
+wifi_scan,330021,0,476257,0,-146236,C++,0,Rust,0.692947
+volatile_usb_read,43415,0,464,0,42951,Rust,0,Rust,93.5668
+volatile_usb_write,43372,0,483,0,42889,Rust,0,Rust,89.7971
