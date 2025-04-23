@@ -1,0 +1,71 @@
+// net_io.cpp
+#include <arpa/inet.h>
+#include <chrono>
+#include <iostream>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <thread>
+#include <unistd.h>
+
+using namespace std::chrono;
+
+const int PORT = 4000;
+const int MESSAGES = 1'000'000;
+const char PAYLOAD = 0x42;
+
+// Echo server, runs in background thread
+void run_server() {
+    int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(PORT);
+    bind(listen_fd, (sockaddr*)&addr, sizeof(addr));
+    listen(listen_fd, 1);
+    int conn = accept(listen_fd, nullptr, nullptr);
+
+    char buf;
+    while (read(conn, &buf, 1) == 1) {
+        write(conn, &buf, 1);
+    }
+    close(conn);
+    close(listen_fd);
+}
+
+int main() {
+    std::thread srv(run_server);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Client
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in srv_addr{};
+    srv_addr.sin_family = AF_INET;
+    inet_pton(AF_INET, "127.0.0.1", &srv_addr.sin_addr);
+    srv_addr.sin_port = htons(PORT);
+    connect(fd, (sockaddr*)&srv_addr, sizeof(srv_addr));
+
+    // Warm up
+    char recvb;
+    write(fd, &PAYLOAD, 1);
+    read(fd, &recvb, 1);
+
+    auto t0 = high_resolution_clock::now();
+    for (int i = 0; i < MESSAGES; ++i) {
+        write(fd, &PAYLOAD, 1);
+        read(fd, &recvb,   1);
+    }
+    auto d = high_resolution_clock::now() - t0;
+    double secs = duration<double>(d).count();
+    double mps  = MESSAGES / secs;
+
+    std::cout
+      << "msgs=" << MESSAGES
+      << " sec=" << secs
+      << " mps=" << mps
+      << "\n";
+
+    close(fd);
+    shutdown(fd, SHUT_RDWR);
+    srv.join();
+    return 0;
+}
