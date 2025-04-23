@@ -1,0 +1,71 @@
+// File: data_race.cpp
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <atomic>
+#include <chrono>
+#include <mutex>
+
+int main() {
+    const int NUM_THREADS = 4;
+    const int ITERS = 1'000'000;
+
+    // 1) Unsynchronized counter
+    int counter = 0;
+    auto start1 = std::chrono::high_resolution_clock::now();
+    {
+        std::vector<std::thread> v;
+        for(int t=0; t<NUM_THREADS; ++t)
+            v.emplace_back([&](){
+                for(int i=0; i<ITERS; ++i)
+                    counter++;  // data race!
+            });
+        for(auto &th : v) th.join();
+    }
+    auto dur1 = std::chrono::high_resolution_clock::now() - start1;
+    std::cout << "Unsync counter=" << counter
+              << " time_ms=" 
+              << std::chrono::duration_cast<std::chrono::milliseconds>(dur1).count()
+              << "\n";
+
+    // 2) Atomic counter
+    std::atomic<int> ac{0};
+    auto start2 = std::chrono::high_resolution_clock::now();
+    {
+        std::vector<std::thread> v;
+        for(int t=0; t<NUM_THREADS; ++t)
+            v.emplace_back([&](){
+                for(int i=0; i<ITERS; ++i)
+                    ac.fetch_add(1, std::memory_order_relaxed);
+            });
+        for(auto &th : v) th.join();
+    }
+    auto dur2 = std::chrono::high_resolution_clock::now() - start2;
+    std::cout << "Atomic counter=" << ac.load()
+              << " time_ms=" 
+              << std::chrono::duration_cast<std::chrono::milliseconds>(dur2).count()
+              << "\n";
+
+    // 3) Mutex-protected counter
+    int mc = 0;
+    std::mutex mtx;
+    auto start3 = std::chrono::high_resolution_clock::now();
+    {
+        std::vector<std::thread> v;
+        for(int t=0; t<NUM_THREADS; ++t)
+            v.emplace_back([&](){
+                for(int i=0; i<ITERS; ++i) {
+                    std::lock_guard<std::mutex> lk(mtx);
+                    mc++;
+                }
+            });
+        for(auto &th : v) th.join();
+    }
+    auto dur3 = std::chrono::high_resolution_clock::now() - start3;
+    std::cout << "Mutex counter=" << mc
+              << " time_ms=" 
+              << std::chrono::duration_cast<std::chrono::milliseconds>(dur3).count()
+              << "\n";
+
+    return 0;
+}
