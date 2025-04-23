@@ -1,39 +1,46 @@
-# Sensor Benchmark Suite
+Sensor Benchmark Suite
 
-This repository contains a full end-to-end workflow for **simulating**, **testing**, and **benchmarking** a variety of embedded‑style "sensors" in both **C++** and **Rust**, 
-along with a **comparison script** to analyze performance and memory usage between the two implementations.
+This repository contains a full end-to-end workflow for simulating, testing, and benchmarking a variety of embedded‑style "sensors" in both C++ and Rust, along with a comparison script to analyze performance and memory usage between the two implementations. It also includes edge-case benchmarks for concurrency, memory safety, network I/O, and error-propagation scenarios.
 
----
+Table of Contents
 
-## Table of Contents
+Overview
 
-1. [Overview](#overview)
-2. [Project Structure](#project-structure)
-3. [Variable Names & Key Concepts](#variable-names--key-concepts)
-4. [C++ Testbench](#c-testbench)
-5. [Rust Testbench](#rust-testbench)
-6. [Benchmark Drivers](#benchmark-drivers)
-7. [Comparison Script](#comparison-script)
-8. [Running the Workflow](#running-the-workflow)
-9. [What the Tests Prove](#what-the-tests-prove)
+Project Structure
 
----
+Variable Names & Key Concepts
 
-## Overview
+C++ Testbench
 
-We have built:  
-- **Mock sensor classes** for servos, LEDs, USB cache, volatile pointers, RF modules, Wi‑Fi scanning, buttons, and potentiometers.  
-- **Unit tests** in both C++ (using Google Test) and Rust (built‑in `#[test]`) to verify functionality.  
-- **Benchmark drivers** that repeatedly exercise each mock and record **execution time** and **memory usage**.  
-- A **Python comparison script** that merges the results, computes time/memory deltas, labels the faster implementation, and calculates human‑readable speedup ratios.
+Rust Testbench
 
-This allows a direct apples‑to‑apples performance comparison of C++ vs. Rust implementations of the same sensor interface.
+Benchmark Drivers
 
----
+Edge-Case Benchmarks
 
-## Project Structure
+Comparison Script
 
-```
+Running the Workflow
+
+What the Tests Prove
+
+Overview
+
+We have built:
+
+Mock sensor classes for servos, LEDs, USB cache, volatile pointers, RF modules, Wi‑Fi scanning, buttons, and potentiometers.
+
+Unit tests in both C++ (Google Test) and Rust (#[test]) to verify functionality.
+
+Benchmark drivers that repeatedly exercise each mock and record execution time and memory usage.
+
+Edge-case benchmarks for data races, buffer-overflows, high-frequency network I/O, exception vs panic propagation, and concurrent channel communication.
+
+A Python comparison script that merges results, computes deltas, labels the faster implementation, and calculates human-readable speedup ratios.
+
+This allows an apples‑to‑apples performance and safety comparison between C++ and Rust for both normal operation and critical edge cases.
+
+Project Structure################################################################
 cpp_sensors/          # C++ project
   include/            # Header files (sensors.hpp)
   src/                # Implementation (sensors.cpp)
@@ -43,121 +50,154 @@ cpp_sensors/          # C++ project
   build/              # CMake build directory
   sensor_tests        # Unit‑test binary
   sensor_bench        # Benchmark binary
-  cpp_sensor_bench.csv# Benchmark results
+  cpp_sensor_bench.csv# Basic benchmark results
   compare.py          # Python comparison script
-  comparison_full.csv # Merged comparison output
+  comparison_full.csv # Merged basic results
 
 rust_sensors/         # Rust project
   src/lib.rs          # Sensor implementations
   src/main.rs         # Rust benchmark driver
-  tests/sensors.rs    # Unit tests
+  tests/              # Unit tests (sensors.rs)
   Cargo.toml          # Package config
   target/             # Cargo build outputs
-  rust_sensor_bench.csv# Benchmark results
-```
+  rust_sensor_bench.csv# Rust basic benchmark results
 
----
+edge_case_tests/      # Edge-case benchmarks
+  data_race.cpp       # C++ data-race stress test
+  data_race.rs        # Rust data-race stress test
+  buffer_fuzz.cpp     # C++ buffer-overflow fuzzing
+  buffer_fuzz.rs      # Rust buffer-overflow fuzzing
+  edge_case_results.csv# Data-race & buffer-fuzz results
 
-## Variable Names & Key Concepts
+advanced_io_tests/    # Network and concurrency benchmarks
+  net_io.cpp          # C++ high-frequency TCP echo test
+  net_io.rs           # Rust high-frequency TCP echo test
+  propagate_exception.cpp # C++ exception propagation test
+  propagate_panic.rs  # Rust panic propagation test
+  chan_comm.cpp       # C++ channel communication test
+  chan_comm_rust/     # Cargo project for Rust channel test
+  edge6_9_10_results.csv # Net I/O, propagation, channel results
 
-- **`Servo`**, **`LED`**, **`USBCache`**, **`VolatileUSB`**, **`RFModule`**, **`WiFiScanner`**, **`Button`**, **`Pot`**: sensor classes implementing a common interface (where applicable).
-- **C++ Driver Variables**:
-  - `dummy_pwm`, `dummy_gpio`: capture PWM/GPIO callbacks.
-  - `getMemoryKb()`: reads `VmRSS` from `/proc/self/status`.
-  - `benchmark(name, f, iters, out)`: helper template to measure time & memory delta.
-- **Rust Driver Variables**:
-  - Uses closures capturing `Arc<Mutex<…>>` to record callback outputs.
-  - `get_memory_kb()`: similar function to read process resident size.
-  - `benchmark(...)`: identical logic in Rust.
-- **Python Comparison Script**:
-  - `cpp_time_ns`, `rust_time_ns`, `cpp_mem_kb`, `rust_mem_kb`: loaded from CSVs.
-  - `time_diff_ns`, `mem_diff_kb`: deltas.
-  - `faster_time`, `faster_memory`: labels which implementation is lower.
-  - `speedup_desc`: human‑readable ratio (e.g. “Rust by 2.35×”).
+combined_results.csv  # Unified CSV of all categories
+###########################################################
 
----
+Variable Names & Key Concepts
 
-## C++ Testbench
+Sensors: Servo, LED, USBCache, VolatileUSB, RFModule, WiFiScanner, Button, Pot.
 
-1. **Header (`sensors.hpp`)** defines each class interface.  
-2. **Implementation (`sensors.cpp`)** provides simulated delays (e.g. `std::this_thread::sleep_for`) and internal state.  
-3. **Unit Tests** in `tests/sensors_test.cpp` verify correctness of `init()`, `read()`, `set()`, and loopback behaviors.  
-4. **Purpose**: ensure each mock behaves as expected before benchmarking.
+Benchmark driver: records time_ns, mem_kb for each sensor operation.
 
----
+Edge-case metrics:
 
-## Rust Testbench
+Data‐race: final counter vs expected, time_ms.
 
-1. **Library (`src/lib.rs`)** declares the same sensor mocks, using Rust idioms (`struct`, `impl`, `Arc<Mutex<…>>`).  
-2. **Unit Tests** in `tests/sensors.rs` parallel the C++ tests, ensuring feature parity.  
-3. **Purpose**: confirm functional equivalence in Rust.
+Buffer‐fuzz: exception/panic count, time_ms.
 
----
+Net I/O & channels: msgs, sec, mps.
 
-## Benchmark Drivers
+Propagation: caught, ms.
 
-Both C++ and Rust drivers:
+Comparison script: compare.py, visualize_edge6_9_10.py, and tabulation tools.
 
-- **Loop** each operation a large number of times (e.g. 100 000 for servo/LED, fewer for expensive ops).  
-- **Record** total nanoseconds and memory before/after.  
-- **CSV** output: `sensor,iterations,time_ns,mem_kb`.
+C++ Testbench
 
-**Why**: measuring both CPU time and resident memory gives a holistic performance view.
+Header (sensors.hpp): defines sensor interfaces.
 
----
+Implementation (sensors.cpp): simulates delays and hardware behaviors.
 
-## Comparison Script
+Unit Tests: tests/sensors_test.cpp (C++).
 
-`compare.py`:
+Benchmark: main.cpp loops, prints CSV.
 
-1. Loads `cpp_sensor_bench.csv` and `rust_sensor_bench.csv`.  
-2. **Merges** on `sensor`.  
-3. Computes:
-   - **Time difference** (`time_diff_ns`).  
-   - **Memory difference** (`mem_diff_kb`).  
-   - **Faster labels** (`faster_time`, `faster_memory`).  
-   - **Speedup description** (`speedup_desc`).  
-4. **Outputs** a Markdown table and writes `comparison_full.csv`.
+Rust Testbench
 
----
+Library (src/lib.rs): Rust sensor mocks.
 
-## Running the Workflow
+Unit Tests: tests/sensors.rs.
 
-1. **C++**:
-   ```bash
-   cd ~/cpp_sensors
-   mkdir build && cd build
-   cmake .. && make -j
-   ./sensor_tests       # unit tests
-   cd ..
-   g++ -std=c++17 main.cpp src/sensors.cpp -Iinclude -O2 -pthread -o sensor_bench
-   ./sensor_bench       # benchmark
-   ```
-2. **Rust**:
-   ```bash
-   cd ~/rust_sensors
-   cargo test           # unit tests
-   cargo build --release
-   ./target/release/rust_sensors  # benchmark
-   ```
-3. **Compare**:
-   ```bash
-   cd ~/cpp_sensors
-   python3 compare.py
-   ```
-4. **Retrieve** `comparison_full.csv` with `scp` or S3.
+Benchmark: src/main.rs, prints CSV.
 
----
+Benchmark Drivers
 
-## What the Tests Prove
+Basic: loops over sensor calls, records nanoseconds and kB.
 
-- **Functional Correctness**: unit tests guarantee both C++ and Rust mocks adhere to the intended sensor API and behaviors.  
-- **Performance Profile**:
-  - C++ typically has lower latency on simple ops (servo/LED), but Rust may outperform on heavy loops due to optimizer differences.  
-  - Memory usage differences highlight allocation/locking overhead in each implementation.  
-- **Language Trade‑offs**: this bench provides data to decide whether Rust’s safety guarantees come at a runtime cost compared to C++ in embedded‑style contexts.
+Scripts generate comparison_full.csv.
 
----ATTACHED .CSV FILES OF COMPARISON
+Edge-Case Benchmarks
 
-*End of README*
+Data-Race Stress Test
+
+C++: unsynchronized vs atomic vs mutex counters.
+
+Rust: atomic vs mutex (no unsafe data race).
+
+CSV: edge_case_results.csv
+
+Buffer-Overflow Fuzzing
+
+C++: vector::at + exception catching.
+
+Rust: index + catch_unwind.
+
+Triggers ~50% errors, measures time.
+
+CSV: edge_case_results.csv
+
+High-Frequency Network I/O
+
+TCP echo of 1 000 000 bytes.
+
+Measures mps.
+
+CSV: edge6_9_10_results.csv
+
+Panic vs Exception Propagation
+
+30-deep call chain, 10 000 unwinds.
+
+Measures caught, ms.
+
+CSV: edge6_9_10_results.csv
+
+Concurrent Channel Communication
+
+4 producers/4 consumers, 1 000 000 messages.
+
+C++: mutex + condition_variable; Rust: crossbeam-channel.
+
+Measures mps.
+
+CSV: edge6_9_10_results.csv
+
+Comparison Script
+
+Basic: compare.py → comparison_full.csv.
+
+Advanced: visualize_edge6_9_10.py → prints net I/O, propagation, channel tables.
+
+Tabulation: tabulate_results.py for edge-case CSVs.
+
+Running the Workflow
+
+Basic (C++ & Rust): build, run benchmarks, then python3 compare.py.
+
+Edge-case: compile both languages’ tests, run, then use tabulate_results.py.
+
+Advanced I/O: ensure Rust channel built via Cargo, run visualize_edge6_9_10.py.
+
+Combine with combined_results.csv for unified analysis.
+
+What the Tests Prove
+
+Performance differences across sensor, concurrency, and I/O patterns.
+
+Safety: Rust prevents data races and out-of-bounds at compile/runtime.
+
+Trade-offs: raw speed vs built-in safety abstractions.
+
+Embedded considerations: binary size, stack usage, no_std, custom allocators, RTOS integration.
+
+End of README
+
+
 
