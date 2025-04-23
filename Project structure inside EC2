@@ -1,0 +1,20 @@
+cpp_sensors/          # C++ project
+  include/            # Header files (sensors.hpp)
+  src/                # Implementation (sensors.cpp)
+  tests/              # Google Test files
+  main.cpp            # C++ benchmark driver
+  CMakeLists.txt      # Build config
+  build/              # CMake build directory
+  sensor_tests        # Unit‑test binary
+  sensor_bench        # Benchmark binary
+  cpp_sensor_bench.csv# Benchmark results
+  compare.py          # Python comparison script
+  comparison_full.csv # Merged comparison output
+
+rust_sensors/         # Rust project
+  src/lib.rs          # Sensor implementations
+  src/main.rs         # Rust benchmark driver
+  tests/sensors.rs    # Unit tests
+  Cargo.toml          # Package config
+  target/             # Cargo build outputs
+  rust_sensor_bench.csv# Benchmark results
