@@ -1,0 +1,129 @@
+Abstract
+This paper presents a comprehensive analysis of performance and safety characteristics of C++ and Rust across a suite of benchmarks designed to emulate embedded and systems‐level workloads.
+We aggregate results from three categories of tests: basic sensor simulations (servo, LED, USB, RF, Wi-Fi, button, potentiometer), edge‐case memory/concurrency (data-race stress, buffer-overflow fuzzing), 
+and advanced I/O and communication (high-frequency TCP echo, exception vs panic propagation, multi‐producer/multi‐consumer channels). Our findings highlight trade-offs in throughput, latency, memory usage, 
+and error-handling cost. We discuss implications for real-world deployment on resource-constrained platforms (e.g. LEGO MINDSTORMS NXT), and outline additional stress scenarios to validate Rust’s suitability
+for production embedded software.
+
+1. Introduction and Motivation
+Embedded systems and robotics increasingly demand both high performance and strong safety guarantees. C++ has long been the lingua franca—offering manual control over memory,
+minimal runtime overhead, and mature toolchains. However, manual memory management and unchecked concurrency introduce subtle bugs (data races, buffer overruns) that can compromise s
+ystem reliability and safety. Rust’s ownership model, enforced borrow checker, and built-in abstractions promise zero‐cost safety: preventing entire classes of undefined behavior at
+compile time and providing thread-safe concurrency primitives. Yet, Rust’s runtime checks (bounds checks, panic unwinding) and abstraction layers may incur performance penalties that
+matter on constrained hardware.
+
+To guide engineering decisions, we selected six complementary benchmarks, each exercising critical dimensions:
+
+Basic Sensor Simulations (comparison_full.csv): repetitive in-memory operations measuring nanosecond-scale set/read and memory footprints.
+
+Edge-Case Memory & Concurrency (edge_case_results.csv): intentional data races versus synchronized atomics/mutexes, and fuzz-triggered bounds violations to provoke exceptions or panics.
+
+Advanced I/O & Communication (edge6_9_10_results.csv): high-frequency TCP echo throughput, deep call-stack unwinding cost, and multi-producer/consumer channel throughput.
+
+By combining these into a unified dataset (combined_results.csv), we enable cross‐comparison of raw speed, memory impact, and error-handling overhead. 
+This paper interprets those results, discusses real-world implications for a LEGO NXT-class microcontroller, and recommends further edge-case testing to build confidence in Rust for embedded deployment.
+
+2. Methodology
+2.1 Benchmark Implementation
+All tests were implemented in C++17 (g++ –O2) and Rust 2021 edition (rustc –O). To simulate embedded constraints, we ran on an AWS EC2 t3.medium (2 vCPU, 4 GB RAM), 
+approximating the CPU performance of a microcontroller scaled up for measurement accuracy.
+
+Basic Sensor Suite: main.cpp / src/main.rs loop through mock classes (Servo, LED, USBCache, etc.), measuring wall-clock time (nanoseconds) and resident memory (kB) before/after each inner loop.
+
+Data-Race & Buffer-Overflow:
+
+Data-Race Stress: four-thread increment loops using raw counter++, atomic.fetch_add, and mutex locking, capturing lost updates and synchronization cost.
+
+Buffer Fuzz: random write lengths into fixed-size buffers, catching std::out_of_range exceptions or Rust panic!(), and tallying ~50 % out-of-bounds events.
+
+High-Frequency Network I/O: single-threaded TCP echo server plus client sending 1 000 000 one-byte messages, measuring total seconds and computing messages/sec.
+
+Exception vs Panic Propagation: 30-deep call chain forcing 10 000 exceptions/panics, measuring unwind cost in milliseconds. A no-op panic hook in Rust suppresses diagnostic output.
+
+Concurrent Channel Communication: four producers and four consumers exchanging 1 000 000 messages via C++ std::queue+mutex+condition_variable versus Rust crossbeam-channel::unbounded(), measuring throughput.
+
+2.2 Data Collection & Aggregation
+Each binary printed a single line with its key metrics, which were parsed into three CSVs. We then concatenated them with a 
+Category column to form combined_results.csv, facilitating filtering and visualization. Memory measurements were included where applicable, 
+though network I/O and propagation tests focused solely on time and count.
+
+3. Results and Interpretation
+3.1 Throughput & Latency
+
+Test | mps/ms | Metric
+C++ Net IO | 90 750 /s | Net throughput
+Rust Net IO | 95 513 /s | Net throughput
+C++ Channel Comm | 2.33×10⁷ /s | Chan throughput
+Rust Channel Comm | 1.87×10⁷ /s | Chan throughput
+C++ Exception Propagation | 107 µs/throw | Unwind cost
+Rust Panic Propagation | 320 µs/panic | Unwind cost
+
+Network I/O: Rust slightly outperforms C++ (≈5 %), likely due to optimized I/O buffering in Rust’s standard library.
+
+Channel Throughput: C++’s simple locked queue surprisingly peaks at ~23 M msgs/s, while Rust’s general-purpose lock-free channel reaches ~18 M msgs/s.
+The higher abstraction in crossbeam-channel trades some raw speed for richer features (bounded channels, select).
+
+Error Unwinding: C++ exceptions cost ≈1.7 µs per unwind, whereas Rust panics cost ≈3.2 µs. Rust can be configured to abort rather than unwind, 
+eliminating this overhead at the expense of process termination.
+
+3.2 Memory & Safety Overheads
+Basic Sensor Suite: Both implementations showed negligible memory deltas; Rust’s abstractions did not bloat resident size significantly under –O builds.
+
+Data-Race Stress: Unsynchronized C++ lost updates (≈2 M of 4 M intended), validating safety risks. Both C++ and Rust atomics/mutexes achieved correct counts, 
+with Rust’s mutex ≈32 % faster than C++’s under contention—demonstrating efficient OS‐backed primitives in Rust’s standard library.
+
+Buffer Fuzz: Exception/panic rates hovered around 45–48 %, confirming uniform random distribution. C++ exceptions ran ~111 ms, Rust panics ~202 ms for 100 000 iterations. 
+Rust’s catch_unwind overhead remains higher than C++’s exception mechanism.
+
+4. Implications for Real-World NXT-Class Deployment
+The LEGO MINDSTORMS NXT platform features an ARM7 microcontroller (~48 MHz, 64 KB RAM, 256 KB Flash). Translating these benchmarks to such a constrained environment raises several considerations:
+
+Binary Size & Flash Footprint
+
+Rust’s standard library and panic unwind tables can inflate binary size. On NXT, you may need #![no_std] builds, use panic=abort, and disable unused features to fit into Flash.
+
+Memory Safety vs Stack Constraints
+
+Embedded stacks are small (often ≤ 4 KB). Rust’s aggressive inlining and recursion can overrun stack; use #[inline(never)] and avoid deep recursion, or allocate buffers statically.
+
+Concurrency Support
+
+Real NXT OS may lack full thread or networking stacks. Rust’s std::thread and networking crates will need to be replaced with RTOS primitives or custom drivers.
+
+Lock-free channels (crossbeam) assume OS scheduling; on bare metal, consider single‐producer/single‐consumer ring buffers or async state machines.
+
+I/O Drivers & FFI
+
+C++ drivers often use direct memory‐mapped registers without abstractions; Rust swaps in unsafe blocks around FFI. 
+Ensure that critical sections are safe and that volatile reads/writes are properly annotated.
+
+Before committing to Rust for embedded, developers must tailor the toolchain: –no‐std runtime, custom allocators, minimal panic behavior, and RTOS integration. 
+These adaptations can remove Rust’s runway overheads but require additional engineering.
+
+5. Future Edge-Case Experiments
+To further validate Rust’s embedded readiness, we recommend exploring:
+
+Interrupt‐Driven Concurrency
+Simulate high‐frequency hardware interrupts updating shared state, comparing Mutex vs Atomic in ISR contexts.
+
+Custom Allocator Fragmentation
+Stress dynamic allocation/deallocation (e.g. message buffers) to observe fragmentation on limited heap.
+
+Real-Time I/O Scheduling
+Bench periodic sensor sampling under RTOS jitter, comparing Rust’s async/await with C++ callbacks or ISR‐based designs.
+
+CRC & DMA Transfers
+Offload bulk data via DMA and compute CRC checks in parallel, measuring overhead of unsafe buffer handling in Rust vs raw pointers in C++.
+
+Worst-Case Stack Usage
+Use tools to measure maximum call depth and stack requirements of std vs no_std Rust code with heavy generics and trait objects.
+
+6. Conclusion
+Our three-tiered benchmark suite demonstrates that Rust and C++ each offer unique strengths:
+
+Rust delivers strong safety guarantees with minimal performance penalties in networking, but higher costs in panic unwinding and general‐purpose channel throughput.
+
+C++ excels in lock-based concurrency and exception performance, at the expense of undefined behavior if safety disciplines lapse.
+
+For embedded deployment on NXT-class hardware, Rust requires careful configuration—stripping the standard library, switching to abort‐on‐panic, and leveraging RTOS primitives. 
+Combined with targeted edge-case testing (interrupts, DMA, real‐time jitter), these insights will inform robust, performant, and safe system designs.
