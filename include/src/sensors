@@ -1,0 +1,14 @@
+#include "sensors.hpp"
+#include <thread>
+#include <chrono>
+
+// Servo, LED, USBCache implementations...
+
+// VolatileUSB: point at real buffer
+VolatileUSB::VolatileUSB(USBCache& cache) {
+    _ptr = cache.raw_data();
+}
+void VolatileUSB::write_volatile(uint32_t addr, uint8_t v) { _ptr[addr] = v; }
+uint8_t VolatileUSB::read_volatile(uint32_t addr)    { return _ptr[addr]; }
+
+// RFModule, WiFiScanner, Button, Pot implementations...
