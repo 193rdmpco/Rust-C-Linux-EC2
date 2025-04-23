@@ -1,0 +1,103 @@
+. Introduction
+Modern systems software frequently must handle extreme conditions—high throughput networking, deep error‐propagation stacks, and heavy inter-thread messaging. C++ gives engineers fine-grained control and minimal runtime overhead, but at the cost of potential undefined behavior and complex manual error handling. Rust, by contrast, enforces safety guarantees (no data races, bounds-checked indexing, explicit error or panic handling) but incurs measurable runtime costs in certain patterns. We designed three benchmarks to:
+
+Quantify the performance of each language’s networking and concurrency primitives.
+
+Measure the cost of unwinding on error propagation.
+
+Highlight real-world trade‐offs between low-level control and built-in safety.
+
+Each benchmark was implemented in idiomatic C++17 and Rust 2021 edition, compiled with optimizations (-O2/--release), and executed on an AWS EC2 t3.medium instance. Key metrics—throughput (messages/sec), latency (ms), and error‐handling cost—were captured for side‐by-side comparison.
+
+2. Benchmark Scenarios & Methodology
+2.1 High-Frequency Network I/O
+Why it matters: Network proxies, microservices, and in-kernel modules must process millions of small packets per second with minimal latency.
+Implementation:
+
+Server: Single-threaded TCP echo server listening on localhost.
+
+Client: Sends N = 1 000 000 one-byte messages, immediately reads the echoed byte.
+
+Metrics:
+
+sec: total elapsed seconds.
+
+mps: messages per second = N/sec.
+
+2.2 Panic vs Exception Propagation
+Why it matters: Deep call stacks must unwind reliably on error, whether via C++ exceptions or Rust panics. Language runtime overheads can dominate in rarely-taken error paths.
+Implementation:
+
+Depth: 30 nested function calls.
+
+Iterate: Throw/panic in the innermost function for ITERS = 10 000 loops.
+
+Metrics:
+
+caught: number of caught errors (should equal ITERS).
+
+ms: elapsed milliseconds for all unwinds.
+
+2.3 Concurrent Channel Communication
+Why it matters: Producer-consumer pipelines and task queues underpin high-performance servers. The cost of enqueuing and dequeuing under contention directly impacts system throughput.
+Implementation:
+
+Producers: 4 threads, each sending TOTAL/4 messages.
+
+Consumers: 4 threads draining the channel.
+
+Primitives:
+
+C++: std::queue, std::mutex, std::condition_variable.
+
+Rust: crossbeam-channel::unbounded() lock-free MPMC channel.
+
+Metrics:
+
+sec: total time to send and receive TOTAL = 1 000 000 messages.
+
+mps: throughput = TOTAL/sec.
+
+3. Results
+Test | msgs | secs | mps | caught | ms
+C++ Net IO | 1000000 | 11.0192 | 90750.6 | — | —
+Rust Net IO | 1000000 | 10.4697 | 95513.3 | — | —
+C++ Exception Propagation | — | — | — | 10000 | 17
+Rust Panic Propagation | — | — | — | 10000 | 32
+C++ Channel Comm | 1000000 | 0.04289 | 2.33151 × 10⁷ | — | —
+Rust Channel Comm | 1000000 | 0.05352 | 1.86857 × 10⁷ | — | —
+
+4. Discussion
+4.1 Networking Throughput
+C++: ~90 000 msgs/s on a simple loop; overhead from read/write syscalls in blocking mode.
+
+Rust: ~95 000 msgs/s, a ~5 % gain. Rust’s standard library TCP primitives internally use similar syscalls; minor differences in buffering and branch prediction likely explain the speedup.
+
+Real-world impact: A 5 % throughput gain scales to tens of thousands of extra requests per second in high-load microservices.
+
+4.2 Error Propagation Cost
+C++ exceptions: 10 000 exceptions unwind in ~17 ms → 1.7 µs per throw.
+
+Rust panics: 10 000 panics unwind in ~32 ms → 3.2 µs per panic.
+
+C++’s zero-cost abstraction ensures that the throw path pays only the cost of the unwind tables, whereas Rust’s panic uses a more conservative unwinding mechanism that flushes stack frames safely. Rust can be configured to abort on panic (removing unwind overhead), but at the cost of process termination rather than recovery.
+
+Real-world impact: In safe code where errors are rare, both costs may be acceptable. In long-running servers where panic is used sparingly, Rust’s default unwind may be too heavy; switching to return-based Result or abort-on-panic is recommended.
+
+4.3 Channel Throughput
+C++ (std::mutex + CV): ~23.3 million msgs/s.
+
+Rust (crossbeam-channel): ~18.7 million msgs/s.
+
+C++’s naive queue with a single mutex surprisingly outperforms Rust’s highly optimized lock-free channel in this test, likely due to lower branch misprediction or smaller code footprint. Crossbeam’s multi-endpoint channel generalizes to more patterns (non-blocking selects, bounded capacity) at some performance cost.
+
+Real-world impact: For ultra-high-speed pipelines where only a single producer/consumer is needed, fine-tuned C++ locks may excel. For more complex topologies (multi-producer, multi-consumer, selective receives), Rust’s channels provide built-in safety and flexibility.
+
+5. Conclusion
+These three edge cases underscore that language design choices manifest in measurable performance differences:
+
+Network I/O: Rust’s safety guarantees do not impede basic TCP throughput.
+
+Error propagation: C++ exceptions are lighter than Rust panics by default; Rust offers alternative strategies to avoid unwinding.
+
+Inter-thread messaging: Manual locks in C++ can outpace general-purpose lock-free channels in Rust, though at the cost of lower abstraction safety.
