@@ -157,7 +157,7 @@ Both C++ and Rust drivers:
   - Memory usage differences highlight allocation/locking overhead in each implementation.  
 - **Language Trade‑offs**: this bench provides data to decide whether Rust’s safety guarantees come at a runtime cost compared to C++ in embedded‑style contexts.
 
----
+---ATTACHED .CSV FILES OF COMPARISON
 
 *End of README*
 
