@@ -1,1 +1,24 @@
+use std::time::Instant;
+
+fn main() {
+    const ITERS: usize = 100_000_000;
+    let mut x: u32 = 0;
+    let mut wraps: u32 = 0;
+
+    let t0 = Instant::now();
+    for _ in 0..ITERS {
+        let old = x;
+        x = x.wrapping_add(1);       // always wrap on overflow
+        if x <= old {
+            wraps += 1;
+        }
+    }
+    let d = t0.elapsed();
+    println!(
+        "Final x={} wraps={} time_ms={}",
+        x,
+        wraps,
+        d.as_millis(),
+    );
+}
 
