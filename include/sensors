@@ -1,0 +1,31 @@
+mkdir -p ~/cpp_sensors/{include,src,tests,build}
+cd ~/cpp_sensors
+
+#pragma once
+#include <cstdint>
+#include <vector>
+#include <functional>
+#include <string>             // ← added to fix std::string
+
+// Base Sensor interface
+class Sensor {
+  // ...
+};
+
+// Servo, LED, etc. (omitted for brevity)
+
+// USB cache
+class USBCache {
+public:
+  USBCache(size_t size_kb);
+  void write(uint32_t addr, const std::vector<uint8_t>& data);
+  std::vector<uint8_t> read(uint32_t addr, size_t len);
+
+  // ← allow volatile access
+  uint8_t* raw_data() { return _mem.data(); }
+
+private:
+  std::vector<uint8_t> _mem;
+};
+
+// VolatileUSB, RFModule, WiFiScanner, Button, Pot declarations...
