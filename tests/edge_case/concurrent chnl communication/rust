@@ -1,0 +1,38 @@
+// chan_comm.rs
+use crossbeam_channel::{unbounded, Sender};
+use std::thread;
+use std::time::Instant;
+
+const N_PROD: usize = 4;
+const N_CONS: usize = 4;
+const TOTAL: usize = 1_000_000;
+
+fn main() {
+    let (tx, rx) = unbounded();
+    let t0 = Instant::now();
+
+    // Producers
+    for _ in 0..N_PROD {
+        let tx = tx.clone();
+        thread::spawn(move || {
+            for i in 0..(TOTAL / N_PROD) {
+                tx.send(i).unwrap();
+            }
+        });
+    }
+
+    // Consumers
+    let mut handles = Vec::new();
+    for _ in 0..N_CONS {
+        let rx = rx.clone();
+        handles.push(thread::spawn(move || {
+            for _ in rx.iter() { /* just drain */ }
+        }));
+    }
+
+    drop(tx); // close channel
+    for h in handles { h.join().unwrap(); }
+
+    let secs = t0.elapsed().as_secs_f64();
+    println!("msgs={} secs={} mps={}", TOTAL, secs, (TOTAL as f64)/secs);
+}
