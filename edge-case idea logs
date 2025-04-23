@@ -1,0 +1,80 @@
+EDGE-case idea logs 
+###############################################
+1. Data‐Race Stress Test
+What: Spin up N threads, each incrementing and reading a shared counter without synchronization in C++, and with a Mutex (or AtomicUsize) in Rust.
+
+Why: In C++ this will invoke undefined behavior or lost updates under contention; Rust will refuse to compile the unsafe version and force you into a safe pattern (or require unsafe).
+
+Metrics: Number of successful increments vs expected; error rates; compile-time vs runtime overhead of locks/atomics.
+
+2. Buffer‐Overflow Fuzzing
+What: Feed randomly sized inputs into a fixed‐capacity buffer write routine. In C++ use raw arrays; in Rust, use a Vec or a fixed‐size array.
+
+Why: C++ will happily overwrite adjacent memory (silently corrupting data or crashing), whereas Rust’s bounds‐checked indexing will panic.
+
+Metrics: Crash rate vs panic count; performance penalty of bounds checks.
+
+3. Integer‐Overflow Comparison
+What: Perform arithmetic loops that overflow 32-bit integers. In C++ signed overflow is UB; in Rust it panics in debug builds and wraps in release by default.
+
+Why: Highlights how Rust makes you choose wrapping vs checked arithmetic, while C++ totally trusts you.
+
+Metrics: Behavior correctness, crash/panic rates, and performance of checked_add() vs raw +.
+
+4. Uninitialized‐Memory Reading
+What: Declare a POD struct or array without initializing it, then read its contents in C++; in Rust try using MaybeUninit<T>.
+
+Why: C++ will read garbage (or trap if hardware); Rust forces you to explicitly acknowledge unsafe and properly initialize before read.
+
+Metrics: Incidence of nondeterministic values, safety enforcement, performance overhead of zeroing vs leaving uninitialized.
+
+5. Deep Recursion / Stack Overflow
+What: Recursively traverse a linked list or binary tree to extreme depth.
+
+Why: C++ may blow the stack unpredictably; Rust can compile with -C stack-size or use trampolines/async to control stack usage.
+
+Metrics: Maximum recursion depth before crash, ease of mitigation, performance of alternate strategies.
+
+6. High‐Frequency Network I/O
+What: Simulate a TCP echo server handling thousands of small messages per second. Compare a C++ select/poll loop vs Rust’s tokio async.
+
+Why: Measures overhead of Rust’s async runtime vs bare-metal C++ loops; also tests safe concurrency.
+
+Metrics: Throughput (msgs/s), latency, memory footprint under load.
+
+7. Custom Allocator & Fragmentation
+What: Allocate/free variable‐sized blocks in a tight loop. In C++ use new/delete; in Rust use the global allocator or implement a custom GlobalAlloc.
+
+Why: Shows fragmentation behavior, allocator overhead, and Rust’s ability to swap in a safer or faster allocator.
+
+Metrics: Memory usage over time, fragmentation metrics, allocation/deallocation throughput.
+
+8. Foreign‐Function Interface (FFI) Safety
+What: Call into a C library (e.g. libxml2) passing bad pointers or strings. In C++ you’ll risk UB; in Rust you must wrap calls in unsafe and prove pointer validity.
+
+Why: Demonstrates Rust’s boundary safety at the FFI edge.
+
+Metrics: Crash versus compile-time enforcement, overhead of wrapper layers.
+
+9. Panic vs Exception Propagation
+What: Trigger deep stack of errors— in C++ throw and catch exceptions at multiple layers; in Rust use panic!() vs Result.
+
+Why: Emphasizes the cost of unwinding in each language and Rust’s encouragement of Result-based error handling over panics.
+
+Metrics: Latency of error propagation, binary size impact, runtime safety in release.
+
+10. Concurrent Channel Communication
+What: Spawn M producers and N consumers communicating over a channel. Compare a lock-free queue in C++ vs Rust’s std::sync::mpsc or crossbeam-channel.
+
+Why: Tests throughput under contention and highlights Rust’s zero-cost abstraction guarantees vs C++ manual implementations.
+
+Metrics: Messages/sec, latency, memory per message, ease of reasoning about safety.
+
+How to Integrate
+Implement each scenario in both languages, reusing your existing test/bench harness.
+
+Record identical metrics: time_ns, mem_kb, error_count (where applicable).
+
+Compare via your compare.py to see new deltas and “speedup_desc.”
+
+Document observed behavior: crashes vs panics, UB vs compile errors
