@@ -1,0 +1,18 @@
+use std::mem::MaybeUninit;
+use std::time::Instant;
+
+fn main() {
+    const N: usize = 10_000_000;
+    let mut sink: u8 = 0;
+
+    let t0 = Instant::now();
+    for _ in 0..N {
+        // Create an uninitialized array of 128 bytes
+        let buf: [MaybeUninit<u8>; 128] = unsafe { MaybeUninit::uninit().assume_init() };
+        // Read from it unsafely:
+        let v = unsafe { buf[0].assume_init() };
+        sink ^= v;
+    }
+    let d = t0.elapsed();
+    println!("Sink={} time_ms={}", sink, d.as_millis());
+}
