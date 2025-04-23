@@ -1,0 +1,65 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Apr 22 18:31:34 2025
+
+@author: rossp
+"""
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Load comparison CSV
+df = pd.read_csv('comparison_full.csv')
+
+# 1. Combined Bar + Line Plot (Time Difference vs Speedup)
+df_sorted = df.sort_values('time_diff_ns')
+fig, ax1 = plt.subplots(figsize=(10, 6))
+
+# Bar chart: time difference
+ax1.bar(df_sorted['sensor'], df_sorted['time_diff_ns'], color='skyblue')
+ax1.set_xlabel('Sensor')
+ax1.set_ylabel('Time Difference (ns) (C++ - Rust)')
+ax1.tick_params(axis='x', rotation=45, labelsize=8)
+
+# Line plot: speedup ratio on twin axis
+ax2 = ax1.twinx()
+ax2.plot(df_sorted['sensor'], df_sorted['speedup'], marker='o', color='orange')
+ax2.set_ylabel('Speedup (C++ time / Rust time)')
+
+plt.title('Time Difference and Speedup by Sensor')
+plt.tight_layout()
+plt.savefig('time_speedup_plot.png')
+
+# 2. Bar Chart: Memory Difference
+fig, ax3 = plt.subplots(figsize=(10, 6))
+ax3.bar(df_sorted['sensor'], df_sorted['mem_diff_kb'], color='green')
+ax3.set_xlabel('Sensor')
+ax3.set_ylabel('Memory Difference (kB) (C++ - Rust)')
+ax3.tick_params(axis='x', rotation=45, labelsize=8)
+plt.title('Memory Usage Difference by Sensor')
+plt.tight_layout()
+plt.savefig('memory_diff_plot.png')
+
+# 3. Correlation Matrix Heatmap
+numeric_cols = ['cpp_time_ns', 'rust_time_ns', 'time_diff_ns',
+                'cpp_mem_kb', 'rust_mem_kb', 'mem_diff_kb', 'speedup']
+corr = df[numeric_cols].corr()
+
+fig, ax4 = plt.subplots(figsize=(8, 6))
+cax = ax4.imshow(corr, cmap='viridis', aspect='auto')
+ax4.set_xticks(np.arange(len(numeric_cols)))
+ax4.set_yticks(np.arange(len(numeric_cols)))
+ax4.set_xticklabels(numeric_cols, rotation=45, ha='right')
+ax4.set_yticklabels(numeric_cols)
+fig.colorbar(cax, ax=ax4, orientation='vertical', label='Correlation')
+for i in range(len(numeric_cols)):
+    for j in range(len(numeric_cols)):
+        ax4.text(j, i, f"{corr.iloc[i, j]:.2f}",
+                 ha="center", va="center", color='white', fontsize=8)
+plt.title('Correlation Matrix Heatmap')
+plt.tight_layout()
+plt.savefig('correlation_heatmap.png')
+
+# Show all plots
+plt.show()
+
