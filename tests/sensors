@@ -1,0 +1,4 @@
+#include "sensors.hpp"
+#include <gtest/gtest.h>
+
+// ServoTest, LEDTest, USBCacheTest, RFTest, WiFiTest, ButtonPotTest...
