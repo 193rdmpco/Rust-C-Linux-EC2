@@ -1,0 +1,118 @@
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
+
+// --- Servo ---
+pub struct Servo {
+    angle: Arc<Mutex<u8>>,
+    pwm_out: Box<dyn Fn(u8) + Send + Sync>,
+}
+impl Servo {
+    pub fn new<F>(pwm_out: F) -> Self
+    where F: Fn(u8) + Send + Sync + 'static {
+        Servo { angle: Arc::new(Mutex::new(0)), pwm_out: Box::new(pwm_out) }
+    }
+    pub fn init(&self) { /* setup */ }
+    pub fn set_angle(&self, deg: u8) {
+        *self.angle.lock().unwrap() = deg;
+        (self.pwm_out)(deg);
+    }
+    pub fn angle(&self) -> u8 { *self.angle.lock().unwrap() }
+}
+
+// --- LED ---
+pub struct LED {
+    state: Arc<Mutex<bool>>,
+    gpio_out: Box<dyn Fn(bool) + Send + Sync>,
+}
+impl LED {
+    pub fn new<F>(gpio_out: F) -> Self
+    where F: Fn(bool) + Send + Sync + 'static {
+        LED { state: Arc::new(Mutex::new(false)), gpio_out: Box::new(gpio_out) }
+    }
+    pub fn init(&self) {}
+    pub fn set(&self, on: bool) {
+        *self.state.lock().unwrap() = on;
+        (self.gpio_out)(on);
+    }
+    pub fn state(&self) -> bool { *self.state.lock().unwrap() }
+}
+
+// --- USBCache & volatile
+pub struct USBCache {
+    mem: Vec<u8>,
+}
+impl USBCache {
+    pub fn new(kb: usize) -> Self {
+        USBCache { mem: vec![0; kb * 1024] }
+    }
+    pub fn write(&mut self, addr: usize, data: &[u8]) {
+        thread::sleep(Duration::from_micros(50));
+        self.mem[addr..addr+data.len()].copy_from_slice(data);
+    }
+    pub fn read(&self, addr: usize, len: usize) -> Vec<u8> {
+        thread::sleep(Duration::from_micros(30));
+        self.mem[addr..addr+len].to_vec()
+    }
+}
+
+pub struct VolatileUSB<'a> {
+    ptr: *mut u8,
+    _cache: &'a mut USBCache,
+}
+impl<'a> VolatileUSB<'a> {
+    pub fn new(cache: &'a mut USBCache) -> Self {
+        let ptr = cache.mem.as_mut_ptr();
+        VolatileUSB { ptr, _cache: cache }
+    }
+    pub fn write(&self, addr: usize, v: u8) {
+        unsafe { *self.ptr.add(addr) = v; }
+    }
+    pub fn read(&self, addr: usize) -> u8 {
+        unsafe { *self.ptr.add(addr) }
+    }
+}
+
+// --- RFModule ---
+pub struct RFModule {
+    last: Vec<u8>,
+}
+impl RFModule {
+    pub fn new() -> Self { RFModule { last: vec![] } }
+    pub fn transmit(&mut self, pkt: &[u8]) { self.last = pkt.to_vec(); }
+    pub fn receive(&self) -> Vec<u8> { self.last.clone() }
+}
+
+// --- WiFiScanner ---
+pub struct WiFiScanner;
+impl WiFiScanner {
+    pub fn scan(&self) -> Vec<String> {
+        vec!["Home_Network".into(), "Office".into(), "Public".into()]
+    }
+}
+
+// --- Button ---
+pub struct Button<F> where F: Fn() -> bool {
+    read_gpio: F,
+    pressed: bool,
+}
+impl<F> Button<F> where F: Fn() -> bool {
+    pub fn new(read_gpio: F) -> Self {
+        Button { read_gpio, pressed: false }
+    }
+    pub fn read(&mut self) { self.pressed = (self.read_gpio)(); }
+    pub fn pressed(&self) -> bool { self.pressed }
+}
+
+// --- Potentiometer ---
+pub struct Pot<F> where F: Fn() -> u16 {
+    read_adc: F,
+    val: u16,
+}
+impl<F> Pot<F> where F: Fn() -> u16 {
+    pub fn new(read_adc: F) -> Self {
+        Pot { read_adc, val: 0 }
+    }
+    pub fn read(&mut self) { self.val = (self.read_adc)(); }
+    pub fn value(&self) -> u16 { self.val }
+}
