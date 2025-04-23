@@ -1,0 +1,81 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Data from comparison
+data = {
+    "sensor": [
+        "usb_cache_read", "usb_cache_write", "led_set", "servo_set_angle",
+        "rf_transmit", "button_read", "pot_read", "rf_receive",
+        "wifi_scan", "volatile_usb_read", "volatile_usb_write"
+    ],
+
+    "cpp_time_ns": [
+        6113600956, 6093904883, 173147, 200881,
+        1674937, 229099, 226346, 1586547,
+        330021, 43415, 43372
+    ],
+
+    "rust_time_ns": [
+        5847759882, 5862112743, 4334345, 3796232,
+        2108750, 469, 465, 1415928,
+        476257, 464, 483
+    ],
+
+    "mem_diff_kb": [0] * 11,
+    "speedup": [
+        1.04546, 1.03954, 0.0399477, 0.0529159,
+        0.79428, 488.484, 486.766, 1.1205,
+        0.692947, 93.5668, 89.7971
+    ],
+
+    "time_diff_ns": [
+        265841074, 231792140, -4161198, -3595351,
+        -433813, 228630, 225881, 170619,
+        -146236, 42951, 42889
+    ]
+}
+
+df = pd.DataFrame(data)
+
+
+# 1. Grouped bar chart: C++ vs Rust execution time
+x = range(len(df))
+width = 0.35
+plt.figure()
+plt.bar([xi - width/2 for xi in x], df["cpp_time_ns"], width)
+plt.bar([xi + width/2 for xi in x], df["rust_time_ns"], width)
+plt.xticks(x, df["sensor"], rotation=45, ha='right')
+plt.ylabel("Time (ns)")
+plt.title("C++ vs Rust Execution Time")
+plt.tight_layout()
+
+
+# 2. Bar chart: Speedup Ratio
+plt.figure()
+plt.bar(df["sensor"], df["speedup"])
+plt.xticks(rotation=45, ha='right')
+plt.ylabel("Speedup (C++ time / Rust time)")
+plt.title("Speedup: C++ vs Rust")
+plt.tight_layout()
+
+
+# 3. Scatter plot: Time Difference vs Speedup
+plt.figure()
+plt.scatter(df["time_diff_ns"], df["speedup"])
+for i, label in enumerate(df["sensor"]):
+    plt.annotate(label, (df["time_diff_ns"][i], df["speedup"][i]), fontsize=8)
+plt.xlabel("Time Difference (ns) (C++ - Rust)")
+plt.ylabel("Speedup Ratio")
+plt.title("Time Difference vs Speedup")
+plt.tight_layout()
+
+
+# 4. Bar chart: Memory Difference (all zero in this case)
+plt.figure()
+plt.bar(df["sensor"], df["mem_diff_kb"])
+plt.xticks(rotation=45, ha='right')
+plt.ylabel("Memory Difference (kB)")
+plt.title("Memory Usage Difference")
+plt.tight_layout()
+###########
+plt.show()
