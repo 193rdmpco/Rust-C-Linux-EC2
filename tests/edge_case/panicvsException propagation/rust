@@ -1,0 +1,28 @@
+// propagate_panic.rs
+use std::panic::{self, AssertUnwindSafe};
+use std::time::Instant;
+
+fn f30(depth: usize) {
+    if depth == 0 {
+        panic!("error");
+    }
+    f30(depth - 1);
+}
+
+fn main() {
+    const DEPTH: usize = 30;
+    const ITERS: usize = 10_000;
+    let mut caught = 0;
+
+    let t0 = Instant::now();
+    for _ in 0..ITERS {
+        let res = panic::catch_unwind(AssertUnwindSafe(|| {
+            f30(DEPTH);
+        }));
+        if res.is_err() {
+            caught += 1;
+        }
+    }
+    let ms = t0.elapsed().as_millis();
+    println!("caught={} ms={}", caught, ms);
+}
