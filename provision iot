@@ -1,0 +1,38 @@
+# 1. Create the “Thing”
+aws iot create-thing --thing-name SimSensor
+
+# 2. Generate a certificate and keys
+aws iot create-keys-and-certificate \
+    --set-as-active \
+    --certificate-pem-outfile cert.pem \
+    --public-key-outfile public.key \
+    --private-key-outfile private.key \
+    > cert-arn.json
+
+# 3. Attach a policy (allow connect/publish/subscribe on your topic)
+cat > SimSensorPolicy.json <<EOF
+{
+  "Version":"2012-10-17",
+  "Statement":[{
+    "Effect":"Allow",
+    "Action":["iot:Connect","iot:Publish","iot:Subscribe","iot:Receive"],
+    "Resource":["*"]
+  }]
+}
+EOF
+
+aws iot create-policy \
+    --policy-name SimSensorPolicy \
+    --policy-document file://SimSensorPolicy.json
+
+CERT_ARN=$(jq -r '.certificateArn' cert-arn.json)
+aws iot attach-policy \
+    --policy-name SimSensorPolicy \
+    --target "$CERT_ARN"
+
+# 4. Attach the cert to the thing
+THING_ARN=$(aws iot describe-thing --thing-name SimSensor \
+            --query 'thingArn' --output text)
+aws iot attach-thing-principal \
+    --thing-name SimSensor \
+    --principal "$CERT_ARN"
