@@ -1,0 +1,7 @@
+Test,Count/Panics,Time (ms)
+C++ Data-Race (Atomic),4000000,31
+Rust Data-Race (Atomic),4000000,30
+C++ Data-Race (Mutex),4000000,94
+Rust Data-Race (Mutex),4000000,64
+C++ Buffer-Fuzz,47645,111
+Rust Buffer-Fuzz,45117,202

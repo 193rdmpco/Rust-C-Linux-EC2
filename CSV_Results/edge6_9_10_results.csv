@@ -1,0 +1,7 @@
+Test,msgs,secs,mps,caught,ms
+C++ Net IO,1000000,11.0192,90750.6,,
+Rust Net IO,1000000,10.4697,95513.3,,
+C++ Exception Propagation,,,,10000,17
+Rust Panic Propagation,,,,10000,32
+C++ Channel Comm,1000000,0.0428907,2.33151,,
+Rust Channel Comm,1000000,0.0535168,18685700,,
