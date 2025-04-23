@@ -1,0 +1,48 @@
+// File: data_race.rs
+use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
+use std::thread;
+use std::time::Instant;
+
+fn main() {
+    const N: usize = 4;
+    const ITERS: usize = 1_000_000;
+
+    // Atomic
+    let ac = Arc::new(AtomicUsize::new(0));
+    let t0 = Instant::now();
+    let mut handles = Vec::new();
+    for _ in 0..N {
+        let a = Arc::clone(&ac);
+        handles.push(thread::spawn(move || {
+            for _ in 0..ITERS {
+                a.fetch_add(1, Ordering::Relaxed);
+            }
+        }));
+    }
+    for h in handles { h.join().unwrap(); }
+    let d0 = t0.elapsed();
+    println!("Atomic counter={} time_ms={}",
+        ac.load(Ordering::Relaxed),
+        d0.as_millis(),
+    );
+
+    // Mutex
+    let mc = Arc::new(Mutex::new(0usize));
+    let t1 = Instant::now();
+    let mut handles = Vec::new();
+    for _ in 0..N {
+        let m = Arc::clone(&mc);
+        handles.push(thread::spawn(move || {
+            for _ in 0..ITERS {
+                let mut val = m.lock().unwrap();
+                *val += 1;
+            }
+        }));
+    }
+    for h in handles { h.join().unwrap(); }
+    let d1 = t1.elapsed();
+    println!("Mutex counter={} time_ms={}",
+        *mc.lock().unwrap(),
+        d1.as_millis(),
+    );
+}
