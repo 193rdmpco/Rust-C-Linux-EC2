@@ -1,0 +1,101 @@
+EDGE CASE PAPER 
+######################
+1. Introduction
+In this study, we implemented two classic edge-case stress tests in both C++ and Rust to highlight differences in safety, performance, and error-handling behaviors. The two scenarios are:
+
+Data-Race Stress Test
+Multiple threads increment a shared counter under three synchronization strategies: unsynchronized (C++ only), atomic operations, and mutex locking.
+
+Buffer-Overflow Fuzzing
+Randomized writes to a fixed-capacity buffer, using bounds-checked access (std::vector::at in C++, index panics in Rust) to provoke exceptions or panics.
+
+These tests exercise low-level concurrency and memory-safety mechanisms—areas where C++ allows undefined behavior and runtime errors, while Rust enforces
+safety at compile and runtime. We measured both correctness (final counter values or panic counts) and performance (elapsed time in milliseconds).
+
+2. Test Methodology
+2.1. Environment
+Hardware: AWS EC2 t3.medium instance (2 vCPUs @ 2.5 GHz, 4 GB RAM)
+
+OS: Amazon Linux 2
+
+Compilers:
+
+C++: g++ -std=c++17 -O2
+
+Rust: rustc --edition=2021 and cargo build --release
+
+Measurements:
+
+Count/Panics: number of successful increments or caught panics/exceptions
+
+Time (ms): wall-clock elapsed time measured via high_resolution_clock in C++ and Instant in Rust
+
+2.2. Data-Race Stress Test
+Parameters: 4 threads, 1 000 000 increments each
+
+Variants:
+
+Unsynchronized (C++ only): counter++ without any guard
+
+Atomic (both): ac.fetch_add(1, relaxed)
+
+Mutex (both): std::mutex / std::sync::Mutex
+
+Correctness:
+
+Unsynchronized in C++ exhibits a lost-update data race (final count ≪ 4 000 000).
+
+Atomic and Mutex variants achieve exactly 4 000 000 increments.
+
+Execution: Binaries data_race_cpp and data_race (Rust) print lines matching
+Atomic counter=4000000 time_ms=…
+Mutex counter=4000000 time_ms=…
+2.3. Buffer-Overflow Fuzzing
+Parameters: buffer size = 10, 100 000 iterations, random write length in [0, 20)
+
+Variants:
+
+C++ uses buf.at(j), catching std::out_of_range exceptions
+
+Rust uses buf[j] inside panic::catch_unwind, counting panics
+
+Correctness:
+Approximately half of writes go out of bounds, so caught exceptions/panics ≈ 50 000.
+
+Execution: Binaries buffer_fuzz_cpp and buffer_fuzz print
+C++ exceptions=47645 time_ms=…
+Rust panics=45117 time_ms=…
+Test | Count/Panics | Time (ms)
+C++ Data-Race (Atomic) | 4 000 000 | 31
+Rust Data-Race (Atomic) | 4 000 000 | 30
+C++ Data-Race (Mutex) | 4 000 000 | 94
+Rust Data-Race (Mutex) | 4 000 000 | 64
+C++ Buffer-Fuzz | 47 645 | 111
+Rust Buffer-Fuzz | 45 117 | 202
+4. Discussion
+4.1. Data-Race Stress Test
+Atomic vs Mutex:
+
+Atomic operations complete in ≈ 30 ms: roughly 7.5 ns per operation, demonstrating a very low per-operation cost in both languages.
+
+Mutex locking is significantly more expensive: C++ ≈ 94 ms vs Rust ≈ 64 ms. This reflects differences in default mutex implementations—Rust’s std::sync::Mutex uses a fast, uncontended OS primitive, whereas C++’s std::mutex (backed by pthread_mutex) incurs higher overhead under contention.
+
+Edge-Case Value:
+Concurrency errors are a primary source of bugs in multithreaded C++ code. Rust’s compile-time guarantees prevent the unsynchronized variant entirely. Comparing atomic vs mutex highlights real-world trade-offs between lock-free and locking designs.
+
+4.2. Buffer-Overflow Fuzzing
+Exception vs Panic Cost:
+
+C++ exceptions via vector::at and try/catch incur moderate overhead: ≈ 111 ms (≈ 1.11 μs per iteration).
+
+Rust panics (unwind) cost more: ≈ 202 ms (≈ 2.02 μs per iteration). Rust forces unwinding by default in debug builds; in release, you can opt for abort-on-panic to reduce overhead.
+
+Edge-Case Value:
+Bounds checks are essential for memory safety. C++ leaves unchecked operator[] calls to UB, so using .at() is a defensive choice; Rust enforces bounds checks on every indexing operation. Fuzzing quantifies the exception costs and demonstrates runtime‐safety trade-offs.
+
+5. Conclusion
+These edge cases (data‐race and buffer‐overflow) illustrate crucial safety and performance trade-offs:
+
+Rust prevents many concurrency and memory‐safety bugs at compile time, at the cost of slightly higher runtime checks (e.g., panics).
+
+C++ grants manual control, enabling finer optimizations but at the risk of silent data races and undefined behavior if safety is neglected.
