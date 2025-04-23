@@ -1,0 +1,75 @@
+#include <aws/crt/Api.h>
+#include <aws/crt/mqtt/MqttClient.h>
+#include <chrono>
+#include <cstdlib>
+#include <iostream>
+#include <thread>
+#include <nlohmann/json.hpp>  // JSON for Modern C++
+
+using namespace Aws::Crt;
+using json = nlohmann::json;
+
+int main() {
+    ApiHandle apiHandle;
+
+    // 1. Configure TLS with your certs
+    Mqtt::MqttClientConnectionConfigBuilder builder;
+    builder.WithEndpoint("YOUR_IOT_ENDPOINT_HERE")  // e.g. abcd1234-ats.iot.us-west-2.amazonaws.com
+           .WithCertificateAuthority("AmazonRootCA1.pem")
+           .WithClientId("SimSensorClient")
+           .WithCertificate("cert.pem")
+           .WithPrivateKey("private.key");
+
+    auto clientConfig = builder.Build();
+    if (!clientConfig) {
+        std::cerr << "Config error: " << clientConfig.LastError() << "\n";
+        return -1;
+    }
+
+    // 2. Create MQTT connection
+    Mqtt::MqttClient client(apiHandle);
+    auto connection = client.NewConnection(clientConfig);
+    if (!connection) {
+        std::cerr << "Connection error\n";
+        return -1;
+    }
+
+    // 3. Connect
+    std::promise<bool> connectionCompleted;
+    connection->OnConnectionCompleted = 
+        [&](Mqtt::MqttConnection &, int errorCode, Mqtt::ReturnCode, bool) {
+            connectionCompleted.set_value(errorCode == 0);
+        };
+    connection->Connect();
+    if (!connectionCompleted.get_future().get()) {
+        std::cerr << "Failed to connect\n";
+        return -1;
+    }
+
+    // 4. Publish loop
+    const char* topic = "sensors/temperature";
+    std::srand((unsigned)std::time(nullptr));
+    while (true) {
+        double temp = 20.0 + (std::rand() % 1000) / 50.0;  // 20.0–40.0°C
+        json payload = {
+            {"device","SimSensor"},
+            {"timestamp", std::chrono::duration_cast<std::chrono::seconds>(
+                             std::chrono::system_clock::now()
+                         ).count()},
+            {"temperature", temp}
+        };
+        auto message = payload.dump();
+
+        connection->Publish(
+            Mqtt::QOS::AWS_MQTT_QOS_AT_LEAST_ONCE,
+            topic,
+            ByteBufFromArray((const uint8_t*)message.c_str(), message.size())
+        );
+        std::cout << "Published: " << message << "\n";
+
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    connection->Disconnect();
+    return 0;
+}
