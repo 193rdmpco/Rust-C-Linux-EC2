@@ -1,0 +1,64 @@
+use rust_testbench::*;
+
+#[test]
+fn servo_angle() {
+    let last = std::sync::Mutex::new(0u8);
+    let pwm = |deg| { *last.lock().unwrap() = deg; };
+    let s = Servo::new(pwm);
+    s.init();
+    s.set_angle(45);
+    assert_eq!(s.angle(), 45);
+    assert_eq!(*last.lock().unwrap(), 45);
+}
+
+#[test]
+fn led_toggle() {
+    let state = std::sync::Mutex::new(false);
+    let gpio = |on| { *state.lock().unwrap() = on; };
+    let led = LED::new(gpio);
+    led.init();
+    led.set(true);
+    assert!(led.state());
+    assert!(*state.lock().unwrap());
+}
+
+#[test]
+fn usb_cache_rw() {
+    let mut cache = USBCache::new(1);
+    let data = [9,8,7];
+    cache.write(5, &data);
+    assert_eq!(cache.read(5, 3), data);
+}
+
+#[test]
+fn volatile_usb() {
+    let mut cache = USBCache::new(1);
+    let v = VolatileUSB::new(&mut cache);
+    v.write(0, 0xAB);
+    assert_eq!(v.read(0), 0xAB);
+}
+
+#[test]
+fn rf_loopback() {
+    let mut rf = RFModule::new();
+    let pkt = [1,2,3];
+    rf.transmit(&pkt);
+    assert_eq!(rf.receive(), pkt);
+}
+
+#[test]
+fn wifi_scan() {
+    let wifi = WiFiScanner;
+    let list = wifi.scan();
+    assert!(!list.is_empty());
+}
+
+#[test]
+fn button_pot() {
+    let mut btn = Button::new(|| true);
+    btn.read();
+    assert!(btn.pressed());
+    let mut pot = Pot::new(|| 256);
+    pot.read();
+    assert_eq!(pot.value(), 256);
+}
