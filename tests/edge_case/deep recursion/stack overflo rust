@@ -1,0 +1,28 @@
+use std::thread;
+use std::time::Duration;
+
+// Recursive function
+fn recurse(depth: usize) {
+    if depth == 0 { return; }
+    recurse(depth - 1);
+}
+
+fn main() {
+    // Spawn on a new thread so we can control stack size if needed
+    let builder = thread::Builder::new().stack_size(2 * 1024 * 1024);
+    let handler = builder.spawn(|| {
+        let mut max = 0;
+        for d in (1000..).step_by(1000) {
+            recurse(d);
+            max = d;
+        }
+        max
+    }).unwrap();
+
+    // Wait (or catch panic)
+    match handler.join() {
+        Ok(max_d) => println!("Max safe recursion depth ~= {}", max_d),
+        Err(_) => println!("Thread panicked (stack overflow)"),
+    }
+}
+
