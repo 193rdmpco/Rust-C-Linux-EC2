@@ -1,0 +1,21 @@
+#include <iostream>
+#include <chrono>
+
+int main() {
+    const size_t N = 10'000'000;
+    volatile uint8_t sink = 0;  // prevent optimizer from eliding reads
+
+    auto t0 = std::chrono::high_resolution_clock::now();
+    for (size_t i = 0; i < N; ++i) {
+        uint8_t buf[128];        // uninitialized stack buffer
+        sink ^= buf[i % 128];    // UB: reading uninitialized data
+    }
+    auto d = std::chrono::high_resolution_clock::now() - t0;
+
+    std::cout
+      << "Sink=" << int(sink)
+      << " time_ms="
+      << std::chrono::duration_cast<std::chrono::milliseconds>(d).count()
+      << "\n";
+    return 0;
+}
