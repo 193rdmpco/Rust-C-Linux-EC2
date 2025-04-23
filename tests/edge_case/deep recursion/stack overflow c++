@@ -1,0 +1,23 @@
+#include <iostream>
+#include <thread>
+
+// A simple recursive function
+void recurse(int depth) {
+    if (depth == 0) return;
+    recurse(depth - 1);
+}
+
+int main() {
+    int max_depth = 0;
+    try {
+        // Keep increasing depth until crash
+        for (int d = 1000; ; d += 1000) {
+            recurse(d);
+            max_depth = d;
+        }
+    } catch (...) {
+        // Won't catch a SIGSEGV, but kept for symmetry
+    }
+    std::cout << "Max safe recursion depth ~= " << max_depth << "\n";
+    return 0;
+}
