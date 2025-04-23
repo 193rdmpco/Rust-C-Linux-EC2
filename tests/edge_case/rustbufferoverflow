@@ -1,0 +1,30 @@
+// File: buffer_fuzz.rs
+use rand::{thread_rng, Rng};
+use std::panic;
+use std::time::Instant;
+
+fn main() {
+    const BUFSIZE: usize = 10;
+    const ITERS: usize = 100_000;
+
+    let mut rng = thread_rng();
+    let mut panic_count = 0;
+    let t0 = Instant::now();
+
+    for _ in 0..ITERS {
+        let len = rng.gen_range(0..(BUFSIZE * 2));
+        let mut buf = vec![0; BUFSIZE];
+
+        let res = panic::catch_unwind(|| {
+            for j in 0..len {
+                buf[j] = j;  // bounds-checked, panics if out-of-range
+            }
+        });
+        if res.is_err() {
+            panic_count += 1;
+        }
+    }
+
+    let d = t0.elapsed();
+    println!("Rust panics={} time_ms={}", panic_count, d.as_millis());
+}
