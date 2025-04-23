@@ -1,0 +1,77 @@
+#include "sensors.hpp"
+#include <chrono>
+#include <thread>
+
+// --- Servo ---
+Servo::Servo(std::function<void(int)> pwm_out)
+ : _angle(0), _pwm(pwm_out) {}
+void Servo::init() { /* simulate PWM timer setup */ }
+void Servo::set_angle(int deg) {
+    _angle = deg;
+    _pwm(deg);  // send PWM pulse width
+}
+void Servo::read() { /* maybe read internal state */ }
+int Servo::angle() const { return _angle; }
+
+// --- LED ---
+LED::LED(std::function<void(bool)> gpio_out)
+ : _on(false), _gpio(gpio_out) {}
+void LED::init() {}
+void LED::set(bool on) {
+    _on = on;
+    _gpio(on);
+}
+void LED::read() {}
+bool LED::state() const { return _on; }
+
+// --- USBCache ---
+USBCache::USBCache(size_t size_kb)
+ : _mem(size_kb * 1024) {}
+void USBCache::write(uint32_t addr, const std::vector<uint8_t>& data) {
+    std::this_thread::sleep_for(std::chrono::microseconds(50));
+    std::copy(data.begin(), data.end(), _mem.begin() + addr);
+}
+std::vector<uint8_t> USBCache::read(uint32_t addr, size_t len) {
+    std::this_thread::sleep_for(std::chrono::microseconds(30));
+    return std::vector<uint8_t>(_mem.begin()+addr, _mem.begin()+addr+len);
+}
+
+// --- VolatileUSB ---
+VolatileUSB::VolatileUSB(USBCache& cache) {
+    _ptr = cache.read(0, cache.read(0,0).size()).data();
+}
+void VolatileUSB::write_volatile(uint32_t addr, uint8_t v) {
+    _ptr[addr] = v;
+}
+uint8_t VolatileUSB::read_volatile(uint32_t addr) {
+    return _ptr[addr];
+}
+
+// --- RFModule ---
+void RFModule::transmit(const std::vector<uint8_t>& pkt) {
+    _last_pkt = pkt;
+}
+std::vector<uint8_t> RFModule::receive() {
+    return _last_pkt;
+}
+
+// --- WiFiScanner ---
+std::vector<std::string> WiFiScanner::scan() {
+    return {"Home_Network", "Office_WiFi", "Public_Hotspot"};
+}
+
+// --- Button ---
+Button::Button(std::function<bool()> read_gpio)
+ : _pressed(false), _gpio(read_gpio) {}
+void Button::read() {
+    _pressed = _gpio();
+}
+bool Button::pressed() const { return _pressed; }
+
+// --- Potentiometer ---
+Pot::Pot(std::function<int()> read_adc)
+ : _val(0), _adc(read_adc) {}
+void Pot::read() {
+    _val = _adc();
+}
+int Pot::value() const { return _val; }
