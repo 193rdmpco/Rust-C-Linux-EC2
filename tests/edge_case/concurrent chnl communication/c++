@@ -1,0 +1,56 @@
+// chan_comm.cpp
+#include <condition_variable>
+#include <chrono>
+#include <iostream>
+#include <mutex>
+#include <queue>
+#include <thread>
+#include <vector>
+
+using namespace std::chrono;
+
+const int N_PROD = 4;
+const int N_CONS = 4;
+const int TOTAL = 1'000'000;
+
+std::queue<int> q;
+std::mutex mtx;
+std::condition_variable cv;
+int produced = 0, consumed = 0;
+
+void producer() {
+    while (true) {
+        std::unique_lock lk(mtx);
+        if (produced >= TOTAL) break;
+        q.push(produced++);
+        lk.unlock();
+        cv.notify_one();
+    }
+}
+
+void consumer() {
+    while (true) {
+        std::unique_lock lk(mtx);
+        cv.wait(lk, []{ return !q.empty() || produced >= TOTAL; });
+        while (!q.empty()) {
+            q.pop();
+            consumed++;
+        }
+        if (consumed >= TOTAL) break;
+    }
+}
+
+int main() {
+    std::vector<std::thread> prods, cons;
+    auto t0 = high_resolution_clock::now();
+    for (int i = 0; i < N_PROD; ++i) prods.emplace_back(producer);
+    for (int i = 0; i < N_CONS; ++i) cons.emplace_back(consumer);
+    for (auto& t: prods) t.join();
+    cv.notify_all();
+    for (auto& t: cons) t.join();
+    double secs = duration<double>(high_resolution_clock::now() - t0).count();
+    std::cout << "msgs=" << TOTAL
+              << " secs=" << secs
+              << " mps=" << (TOTAL / secs)
+              << "\n";
+}
