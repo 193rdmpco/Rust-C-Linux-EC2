@@ -1,0 +1,163 @@
+# Sensor Benchmark Suite
+
+This repository contains a full end-to-end workflow for **simulating**, **testing**, and **benchmarking** a variety of embedded‑style "sensors" in both **C++** and **Rust**, 
+along with a **comparison script** to analyze performance and memory usage between the two implementations.
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Project Structure](#project-structure)
+3. [Variable Names & Key Concepts](#variable-names--key-concepts)
+4. [C++ Testbench](#c-testbench)
+5. [Rust Testbench](#rust-testbench)
+6. [Benchmark Drivers](#benchmark-drivers)
+7. [Comparison Script](#comparison-script)
+8. [Running the Workflow](#running-the-workflow)
+9. [What the Tests Prove](#what-the-tests-prove)
+
+---
+
+## Overview
+
+We have built:  
+- **Mock sensor classes** for servos, LEDs, USB cache, volatile pointers, RF modules, Wi‑Fi scanning, buttons, and potentiometers.  
+- **Unit tests** in both C++ (using Google Test) and Rust (built‑in `#[test]`) to verify functionality.  
+- **Benchmark drivers** that repeatedly exercise each mock and record **execution time** and **memory usage**.  
+- A **Python comparison script** that merges the results, computes time/memory deltas, labels the faster implementation, and calculates human‑readable speedup ratios.
+
+This allows a direct apples‑to‑apples performance comparison of C++ vs. Rust implementations of the same sensor interface.
+
+---
+
+## Project Structure
+
+```
+cpp_sensors/          # C++ project
+  include/            # Header files (sensors.hpp)
+  src/                # Implementation (sensors.cpp)
+  tests/              # Google Test files
+  main.cpp            # C++ benchmark driver
+  CMakeLists.txt      # Build config
+  build/              # CMake build directory
+  sensor_tests        # Unit‑test binary
+  sensor_bench        # Benchmark binary
+  cpp_sensor_bench.csv# Benchmark results
+  compare.py          # Python comparison script
+  comparison_full.csv # Merged comparison output
+
+rust_sensors/         # Rust project
+  src/lib.rs          # Sensor implementations
+  src/main.rs         # Rust benchmark driver
+  tests/sensors.rs    # Unit tests
+  Cargo.toml          # Package config
+  target/             # Cargo build outputs
+  rust_sensor_bench.csv# Benchmark results
+```
+
+---
+
+## Variable Names & Key Concepts
+
+- **`Servo`**, **`LED`**, **`USBCache`**, **`VolatileUSB`**, **`RFModule`**, **`WiFiScanner`**, **`Button`**, **`Pot`**: sensor classes implementing a common interface (where applicable).
+- **C++ Driver Variables**:
+  - `dummy_pwm`, `dummy_gpio`: capture PWM/GPIO callbacks.
+  - `getMemoryKb()`: reads `VmRSS` from `/proc/self/status`.
+  - `benchmark(name, f, iters, out)`: helper template to measure time & memory delta.
+- **Rust Driver Variables**:
+  - Uses closures capturing `Arc<Mutex<…>>` to record callback outputs.
+  - `get_memory_kb()`: similar function to read process resident size.
+  - `benchmark(...)`: identical logic in Rust.
+- **Python Comparison Script**:
+  - `cpp_time_ns`, `rust_time_ns`, `cpp_mem_kb`, `rust_mem_kb`: loaded from CSVs.
+  - `time_diff_ns`, `mem_diff_kb`: deltas.
+  - `faster_time`, `faster_memory`: labels which implementation is lower.
+  - `speedup_desc`: human‑readable ratio (e.g. “Rust by 2.35×”).
+
+---
+
+## C++ Testbench
+
+1. **Header (`sensors.hpp`)** defines each class interface.  
+2. **Implementation (`sensors.cpp`)** provides simulated delays (e.g. `std::this_thread::sleep_for`) and internal state.  
+3. **Unit Tests** in `tests/sensors_test.cpp` verify correctness of `init()`, `read()`, `set()`, and loopback behaviors.  
+4. **Purpose**: ensure each mock behaves as expected before benchmarking.
+
+---
+
+## Rust Testbench
+
+1. **Library (`src/lib.rs`)** declares the same sensor mocks, using Rust idioms (`struct`, `impl`, `Arc<Mutex<…>>`).  
+2. **Unit Tests** in `tests/sensors.rs` parallel the C++ tests, ensuring feature parity.  
+3. **Purpose**: confirm functional equivalence in Rust.
+
+---
+
+## Benchmark Drivers
+
+Both C++ and Rust drivers:
+
+- **Loop** each operation a large number of times (e.g. 100 000 for servo/LED, fewer for expensive ops).  
+- **Record** total nanoseconds and memory before/after.  
+- **CSV** output: `sensor,iterations,time_ns,mem_kb`.
+
+**Why**: measuring both CPU time and resident memory gives a holistic performance view.
+
+---
+
+## Comparison Script
+
+`compare.py`:
+
+1. Loads `cpp_sensor_bench.csv` and `rust_sensor_bench.csv`.  
+2. **Merges** on `sensor`.  
+3. Computes:
+   - **Time difference** (`time_diff_ns`).  
+   - **Memory difference** (`mem_diff_kb`).  
+   - **Faster labels** (`faster_time`, `faster_memory`).  
+   - **Speedup description** (`speedup_desc`).  
+4. **Outputs** a Markdown table and writes `comparison_full.csv`.
+
+---
+
+## Running the Workflow
+
+1. **C++**:
+   ```bash
+   cd ~/cpp_sensors
+   mkdir build && cd build
+   cmake .. && make -j
+   ./sensor_tests       # unit tests
+   cd ..
+   g++ -std=c++17 main.cpp src/sensors.cpp -Iinclude -O2 -pthread -o sensor_bench
+   ./sensor_bench       # benchmark
+   ```
+2. **Rust**:
+   ```bash
+   cd ~/rust_sensors
+   cargo test           # unit tests
+   cargo build --release
+   ./target/release/rust_sensors  # benchmark
+   ```
+3. **Compare**:
+   ```bash
+   cd ~/cpp_sensors
+   python3 compare.py
+   ```
+4. **Retrieve** `comparison_full.csv` with `scp` or S3.
+
+---
+
+## What the Tests Prove
+
+- **Functional Correctness**: unit tests guarantee both C++ and Rust mocks adhere to the intended sensor API and behaviors.  
+- **Performance Profile**:
+  - C++ typically has lower latency on simple ops (servo/LED), but Rust may outperform on heavy loops due to optimizer differences.  
+  - Memory usage differences highlight allocation/locking overhead in each implementation.  
+- **Language Trade‑offs**: this bench provides data to decide whether Rust’s safety guarantees come at a runtime cost compared to C++ in embedded‑style contexts.
+
+---
+
+*End of README*
+
