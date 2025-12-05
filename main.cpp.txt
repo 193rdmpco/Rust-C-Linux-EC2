@@ -1,0 +1,346 @@
+// FINAL C++ VERSION — intentionally unsafe & mirrors Rust layout
+// Layout (for 800x480):
+//   40 px  – top bar
+//   240 px – waterfall
+//   100 px – spectrum
+//   75 px  – trend graphs
+// Demonstrates UB, race conditions, manual memory mgmt (vs Rust safety)
+
+#include <chrono>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
+#include <portaudio.h>
+#include <fftw3.h>
+
+#include <vector>
+#include <deque>
+#include <cmath>
+#include <string>
+#include <iostream>
+#include <algorithm>
+
+static const int FFT_SIZE   = 2048;
+static const int TOP_H      = 40;
+static const int WF_H       = 240;
+static const int SPEC_H     = 100;
+static const int TREND_H    = 75;
+static const float PEAK_MAX_HZ = 800.0f;   // fixed scaling for peak plot
+
+// === SHARED BUFFER (INTENTIONALLY UNSAFE) ===
+static std::vector<float> g_inputBuffer(FFT_SIZE, 0.0f);
+
+// === Audio Callback (No mutex — intentional race) ===
+static int audioCallback(
+    const void* input,
+    void*, unsigned long frames,
+    const PaStreamCallbackTimeInfo*,
+    PaStreamCallbackFlags,
+    void*)
+{
+    const float* in = (const float*)input;
+    if (!in) return paContinue;
+
+    unsigned long n = frames;
+    if (n > FFT_SIZE) n = FFT_SIZE;
+
+    for (unsigned long i = 0; i < n; ++i)
+        g_inputBuffer[i] = in[i];       // <-- DATA RACE
+
+    return paContinue;
+}
+
+static float hann(int i) {
+    const float PI = 3.1415926535f;
+    return 0.5f * (1 - std::cos(2 * PI * i / float(FFT_SIZE)));
+}
+
+static float to_db(float x) {
+    if (x < 1e-10f) x = 1e-10f;
+    return 20.0f * std::log10(x);
+}
+
+struct Stats {
+    std::deque<float> fft;
+    std::deque<float> peak;
+    void update(float f, float p) {
+        if (fft.size() >= 300) {
+            fft.pop_front();
+            peak.pop_front();
+        }
+        fft.push_back(f);
+        peak.push_back(p);
+    }
+};
+
+int main() {
+    // ==== SDL INIT ====
+    SDL_Init(SDL_INIT_VIDEO);
+    TTF_Init();
+
+    SDL_DisplayMode dm;
+    SDL_GetCurrentDisplayMode(0, &dm);
+    int width = dm.w;
+    int height = dm.h;
+
+    SDL_Window* win = SDL_CreateWindow(
+        "C++ FFT Visualizer (Unsafe)",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        width, height, SDL_WINDOW_BORDERLESS);
+
+    SDL_Renderer* r = SDL_CreateRenderer(win, -1,
+        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+
+    // ==== FONT ====
+    const char* fonts[] = {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+        "./DejaVuSans.ttf"
+    };
+    std::string fontPath;
+    for (auto& f : fonts) {
+        if (SDL_RWFromFile(f, "rb") != nullptr) {
+            fontPath = f;
+            break;
+        }
+    }
+    if (fontPath.empty()) {
+        std::cerr << "No font found!\n"; return 1;
+    }
+
+    TTF_Font* font = TTF_OpenFont(fontPath.c_str(), 18);
+    TTF_Font* small = TTF_OpenFont(fontPath.c_str(), 14);
+
+    // ==== PORTAUDIO ====
+    Pa_Initialize();
+    PaStream* stream = nullptr;
+
+    PaStreamParameters params;
+    params.device = Pa_GetDefaultInputDevice();
+    params.channelCount = 1;
+    params.sampleFormat = paFloat32;
+    params.hostApiSpecificStreamInfo = nullptr;
+    params.suggestedLatency = Pa_GetDeviceInfo(params.device)->defaultLowInputLatency;
+
+    double sampleRate = 44100.0;
+
+    Pa_OpenStream(
+        &stream,
+        &params,
+        nullptr,
+        sampleRate,
+        FFT_SIZE,
+        paNoFlag,
+        audioCallback,
+        nullptr
+    );
+    Pa_StartStream(stream);
+
+    // ==== FFTW ====
+    float* fftIn = (float*)fftwf_malloc(sizeof(float) * FFT_SIZE);
+    fftwf_complex* fftOut =
+        (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFT_SIZE);
+    fftwf_plan plan = fftwf_plan_dft_r2c_1d(
+        FFT_SIZE, fftIn, fftOut, FFTW_MEASURE);
+
+    // ==== VISUAL BUFFERS ====
+    std::vector<std::vector<float>> waterfall(
+        WF_H, std::vector<float>(FFT_SIZE/2, 0.0f));
+    std::vector<float> prev(FFT_SIZE/2, 0.0f);
+    Stats stats;
+
+    float bar = width / float(FFT_SIZE/2);
+
+    auto renderText = [&](const std::string& s, TTF_Font* f,
+                          SDL_Color c, int x, int y)
+    {
+        SDL_Surface* surf = TTF_RenderUTF8_Blended(f, s.c_str(), c);
+        SDL_Texture* tex = SDL_CreateTextureFromSurface(r, surf);
+        SDL_Rect dst{ x, y, surf->w, surf->h };
+        SDL_RenderCopy(r, tex, nullptr, &dst);
+        SDL_DestroyTexture(tex);
+        SDL_FreeSurface(surf);
+    };
+
+    bool run = true;
+    SDL_Event e;
+
+    while (run) {
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) run = false;
+            if (e.type == SDL_KEYDOWN &&
+                e.key.keysym.sym == SDLK_ESCAPE)
+                run = false;
+        }
+
+        // ==== READ AUDIO (RACE CONDITION INTENDED) ====
+        for (int i = 0; i < FFT_SIZE; i++)
+            fftIn[i] = g_inputBuffer[i] * hann(i);
+
+        // ==== FFT ====
+        auto t0 = std::chrono::high_resolution_clock::now();
+        fftwf_execute(plan);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        float fftMs = std::chrono::duration<float, std::milli>(t1 - t0).count();
+
+        // ==== MAG ====
+        std::vector<float> mags;
+        mags.reserve(FFT_SIZE/2);
+
+        for (int i = 0; i < FFT_SIZE/2; i++) {
+            float re = fftOut[i][0];
+            float im = fftOut[i][1];
+            float db = to_db(std::sqrt(re*re + im*im));
+            mags.push_back(std::clamp((db + 80.0f) / 80.0f, 0.0f, 1.0f));
+        }
+
+        // ==== SMOOTH ====
+        for (size_t i = 0; i < mags.size(); i++)
+            mags[i] = 0.3f*mags[i] + 0.7f*prev[i];
+        prev = mags;
+
+        // ==== PEAK FREQ ====
+        int pi = std::max_element(mags.begin(), mags.end()) - mags.begin();
+        float peakHz = pi * sampleRate / FFT_SIZE;
+        stats.update(fftMs, peakHz);
+
+        // ==== WATERFALL SCROLL ====
+        waterfall.erase(waterfall.begin());
+        waterfall.push_back(mags);
+
+        // ==== DRAW ====
+        SDL_SetRenderDrawColor(r, 15,15,20,255);
+        SDL_RenderClear(r);
+
+        // --- TOP BAR ---
+        renderText("C++ SIGNAL MODEL — UB INSIDE",
+                   font, {255,255,255,255}, 8,4);
+
+        renderText("Manual memory · Data races · Potential leaks · Undefined behavior possible",
+                   small, {255,180,180,255}, 8,22);
+
+        // --- WATERFALL ---
+        for (int row = 0; row < WF_H; row++) {
+            int y = TOP_H + row;
+            for (int i = 0; i < FFT_SIZE/2; i++) {
+                float v = waterfall[row][i];
+                SDL_Color c;
+                if (v < 0.33f) {
+                    float t = v / 0.33f;
+                    c = {0, (Uint8)(t*255), 255, 255};
+                } else if (v < 0.66f) {
+                    float t = (v - 0.33f)/0.33f;
+                    c = {(Uint8)(t*255),255,(Uint8)(255*(1-t)),255};
+                } else {
+                    float t = (v - 0.66f)/0.34f;
+                    c = {255,(Uint8)(255*(1-t)),0,255};
+                }
+                SDL_SetRenderDrawColor(r, c.r,c.g,c.b,255);
+                SDL_Rect R{
+                    int(i*bar),
+                    y,
+                    std::max(1,int(std::ceil(bar))),1
+                };
+                SDL_RenderFillRect(r,&R);
+            }
+        }
+
+        // --- SPECTRUM ---
+        int sy = TOP_H + WF_H;
+        SDL_SetRenderDrawColor(r,20,20,25,255);
+        SDL_Rect spec{0,sy,width,SPEC_H};
+        SDL_RenderFillRect(r,&spec);
+
+        for (size_t i = 0; i < mags.size(); i++) {
+            int h = mags[i] * SPEC_H;
+            SDL_Color c = (int)i == pi ? SDL_Color{255,50,50,255}
+                                       : SDL_Color{0,200,255,255};
+            SDL_SetRenderDrawColor(r,c.r,c.g,c.b,255);
+            SDL_Rect R{
+                int(i * bar),
+                sy + SPEC_H - h,
+                std::max(1,int(std::ceil(bar))),
+                h
+            };
+            SDL_RenderFillRect(r,&R);
+        }
+
+        // --- TRENDS ---
+        int ty = sy + SPEC_H - TREND_H + 2;
+        int half = width/2;
+        int gh = TREND_H - 18;
+
+        // LEFT: FFT TIME
+        SDL_SetRenderDrawColor(r,20,20,25,255);
+        SDL_Rect left{0,ty,half,TREND_H};
+        SDL_RenderFillRect(r,&left);
+        SDL_SetRenderDrawColor(r,80,80,80,255);
+        SDL_RenderDrawRect(r,&left);
+
+        renderText("FFT Time (ms)",small,{0,255,0,255},4,ty+2);
+
+        if (stats.fft.size() > 1) {
+            float maxT = 0.1f;
+            for (float t : stats.fft) maxT = std::max(maxT, t);
+
+            SDL_SetRenderDrawColor(r,0,255,0,255);
+            for (int i = 0; i < (int)stats.fft.size()-1; i++) {
+                int x1 = 2 + (i*(half-4))/300;
+                int x2 = 2 + ((i+1)*(half-4))/300;
+
+                int y1 = ty + TREND_H - 2
+                       - int((stats.fft[i] / maxT) * gh);
+                int y2 = ty + TREND_H - 2
+                       - int((stats.fft[i+1] / maxT) * gh);
+                SDL_RenderDrawLine(r,x1,y1,x2,y2);
+            }
+        }
+
+        // RIGHT: PEAK FREQ (fixed 0–800Hz)
+        SDL_SetRenderDrawColor(r,20,20,25,255);
+        SDL_Rect right{half,ty,half,TREND_H};
+        SDL_RenderFillRect(r,&right);
+        SDL_SetRenderDrawColor(r,80,80,80,255);
+        SDL_RenderDrawRect(r,&right);
+
+        renderText("Peak Frequency (Hz)",small,{255,220,0,255},
+                   half+4,ty+2);
+
+        if (stats.peak.size() > 1) {
+            SDL_SetRenderDrawColor(r,255,200,50,255);
+
+            for (int i = 0; i < (int)stats.peak.size()-1; i++) {
+                float f1 = std::clamp(stats.peak[i], 0.0f, PEAK_MAX_HZ);
+                float f2 = std::clamp(stats.peak[i+1], 0.0f, PEAK_MAX_HZ);
+
+                int x1 = half + 2 + (i*(half-4))/300;
+                int x2 = half + 2 + ((i+1)*(half-4))/300;
+
+                int y1 = ty + TREND_H - 2
+                       - int((f1 / PEAK_MAX_HZ) * gh);
+                int y2 = ty + TREND_H - 2
+                       - int((f2 / PEAK_MAX_HZ) * gh);
+
+                SDL_RenderDrawLine(r,x1,y1,x2,y2);
+            }
+        }
+
+        SDL_RenderPresent(r);
+    }
+
+    // ==== CLEANUP (INTENTIONALLY PARTIAL) ====
+    Pa_StopStream(stream);
+    Pa_CloseStream(stream);
+    Pa_Terminate();
+
+    fftwf_destroy_plan(plan);
+    fftwf_free(fftIn);
+    fftwf_free(fftOut);
+
+    SDL_DestroyRenderer(r);
+    SDL_DestroyWindow(win);
+    TTF_Quit();
+    SDL_Quit();
+    return 0;
+}
